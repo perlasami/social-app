@@ -7,7 +7,7 @@ import { HydratedDocument } from "mongoose";
 import { UserRepo } from "../DB/user.repo";
 import { compareHash, createHash } from "../utils/hash";
 import { createOtp } from "../utils/Email/createOTP";
-import z, { hash, success } from "zod";
+import z, { file, hash, success } from "zod";
 import { template } from "../utils/Email/generateHtml";
 import { emailEmitter } from "../utils/Email/emailEvents";
 import { successHandler } from "../utils/successHandler";
@@ -15,11 +15,21 @@ import { createJwt } from "../utils/jwt";
 import { nanoid } from "nanoid";
 import { decodeToken } from "../middleware/auth.middleware";
 import { tokenTypeEnum } from "../middleware/auth.middleware";
+import { createPresignedUrl, uploadFile, uploadMultipleFile } from "../utils/multer/s3.services";
+
 
 export type confirmemailDTO=z.infer<typeof confirmemailSchema>
 export type resendOtpDTO=z.infer<typeof resendOtp>
 export type loginDTO=z.infer<typeof LoginSchema>
 export type forgetDTO=z.infer<typeof forgetPasswordSchema>
+export interface AuthenticatedRequest extends Request {
+  decoded?: {
+    _id: string;
+    jti?: string;
+    [key: string]: any;
+  };
+}
+
 
 interface Iuserservices {
     signup(req: Request, res: Response, next: NextFunction): Promise<Response>;
@@ -28,6 +38,7 @@ interface Iuserservices {
     confirmemail(req: Request, res: Response, next: NextFunction): Promise<Response>;
     resendOtp(req: Request, res: Response, next: NextFunction): Promise<Response>;
     login(req: Request, res: Response, next: NextFunction): Promise<Response>;
+    //profileImage(req: Request, res: Response, next: NextFunction): Promise<Response>;
 }
 
 export class Userservices implements Iuserservices {
@@ -248,6 +259,45 @@ resetPassword = async (req: Request, res: Response): Promise<Response> => {
 
   return successHandler({ res });
 };
+
+profileImage = async (req: AuthenticatedRequest, res: Response) => {
+  // console.log({file:req.file})
+  // const user=res.locals.user as HydratedDocument<IUser>
+  // const path=await uploadFile({
+  //   File:req.file as Express.Multer.File,
+  //   pathh:"profile-image"
+  // })
+  // user.profileImage=path
+  // await user.save()
+  // successHandler({res,data:{path}})
+
+const {
+  ContentType,
+  originalname,
+}: { ContentType: string; originalname: string } = req.body;
+
+const { url, Key } = await createPresignedUrl({
+  ContentType,
+  originalname,
+  pathh: `users/${req.decoded?._id}`,
+});
+
+return res
+  .status(200)
+  .json({ message: "Profile Image Uploaded Successfully", url, Key });
+}
+
+coverImages = async (req: Request, res: Response) => {
+  const user = res.locals.user as HydratedDocument<IUser>;
+  const paths = await uploadMultipleFile({
+    Files: req.files as Express.Multer.File[],
+    pathh: "coverImages"
+  });
+  user.coverImage = paths;
+  await user.save();
+  successHandler({ res, data: paths });
+}
+
 
 
 

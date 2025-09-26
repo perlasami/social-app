@@ -1,7 +1,10 @@
-import { createHash } from "crypto";
+
 import { Schema, model,HydratedDocument } from "mongoose";
-import { boolean } from "zod";
+import { boolean, maxLength, minLength, string } from "zod";
 import { fa } from "zod/v4/locales";
+import { ApplicationException } from "../utils/error";
+import { createHash } from "../utils/hash";
+import { emailEmitter } from "../utils/Email/emailEvents";
 
 export interface IUser {
   firstName: string;
@@ -18,7 +21,10 @@ export interface IUser {
   };
   phone: string;
   confirm:Boolean;
-  isCredentialsUpdated:Date
+  isCredentialsUpdated:Date;
+  profileImage:string;
+  coverImage:string[];
+  slug:string
 }
 const userSchema = new Schema<IUser>(
   {
@@ -45,6 +51,11 @@ const userSchema = new Schema<IUser>(
     emailOtp: {
       otp:  String ,
       expireAt:  Date ,
+    },slug:{
+      type: String,
+      required: true,
+      minLength:3,
+      maxLength:51
     },
     PsswordOtp: {
       otp:  String ,
@@ -60,7 +71,14 @@ const userSchema = new Schema<IUser>(
     },
     isCredentialsUpdated:{
       type:Date,
-    }
+    },
+    profileImage:{
+      type:String
+    },
+    coverImage:[{
+      type:String
+    }]
+
     
   },
   {
@@ -73,5 +91,46 @@ const userSchema = new Schema<IUser>(
     },
   }
 );
+userSchema
+  .virtual("username")
+  .set(function (value: string) {
+    const [firstName, lastName] = value.split(" ") || [];
+    this.set({ firstName, lastName, slug: value.replaceAll(/\s+/g, "-") });
+  })
+  .get(function () {
+    return `${this.firstName} ${this.lastName}`;
+  });
 
+userSchema.pre("validate", function (next) {
+  console.log("Pre Hook", this);
+  if (!this.slug?.includes("-")) {
+    throw new ApplicationException(
+      "Slug is Required and must hold - like ex: first-name-last-name",409
+    );
+  }
+  next();
+});
+
+userSchema.pre("save", async function (this: HUserDocument & { wasNew: boolean }, next) {
+  this.wasNew = this.isNew;
+  console.log(this.wasNew);
+  if (this.isModified("password")) {
+    this.password = await createHash(this.password);
+  }
+  next();
+});
+
+userSchema.post("save", function (doc, next) {
+  const that = this as HUserDocument & { wasNew: boolean };
+  if (that.wasNew) {
+    emailEmitter.publish("send-email-activation-code", { 
+      to: this.email, 
+      subject: "Confirm your email", 
+      html: `<p>Your OTP is: 123465</p>` 
+    });
+  }
+  next();
+});
+
+export type HUserDocument = HydratedDocument<IUser>;
 export const userModel = model<IUser>("user", userSchema);
