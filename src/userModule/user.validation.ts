@@ -37,3 +37,10 @@ export const forgetPasswordSchema = z.object({
   
   
 });
+
+
+export const confirmLoginSchema = z.object({
+    email: z.email(),
+    otp: z.string().min(4).max(6), 
+  });
+

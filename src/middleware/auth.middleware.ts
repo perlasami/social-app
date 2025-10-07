@@ -18,10 +18,11 @@ export interface Payload{
 
 }
 
-export interface IRequest extends Request{
-    user:Partial<IUser>
 
-}
+// export interface IRequest extends Request {
+//     user?: IUser & { _id: ObjectId };  // match Mongoose type
+// }
+
 
 
 
@@ -31,9 +32,10 @@ export const decodeToken= async ({authorization,tokenType=tokenTypeEnum.access}:
     if(!authorization){
         throw new invalidTokenException()
     }
-    if(!authorization.startsWith(process.env.bearer_key as string)){
-        throw new invalidTokenException()
-    }
+    if (!authorization.toLowerCase().startsWith("bearer ")) {
+    throw new invalidTokenException();
+}
+
     const token=authorization.split(" ")[1]
     if(!token){
         throw new invalidTokenException()
@@ -52,18 +54,34 @@ export const decodeToken= async ({authorization,tokenType=tokenTypeEnum.access}:
     if(!user.confirm){
         throw new notConfirmed()
     }
-    if(user.isCredentialsUpdated.getTime()<= payload.iat *1000){
-        throw new ApplicationException("please login again",409)
-    }
+    if (user.isCredentialsUpdated && user.isCredentialsUpdated.getTime() <= payload.iat * 1000) {
+  throw new ApplicationException("please login again", 409);
+}
+
     return {user,payload}
 
 }
 
 export const auth = () => {
-  return async (req: IRequest, res: Response, next: NextFunction) => {
-    const {user,payload} = await decodeToken({ authorization: req.headers.authorization  });
-    res.locals.user=user;
-    res.locals.payload=payload;
-    next();
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      console.log(" Entered auth middleware");
+
+      const { user, payload } = await decodeToken({ authorization: req.headers.authorization });
+
+      res.locals.user = user;
+      res.locals.payload = payload;
+
+      next();
+    } catch (err: any) {
+      console.error(" Auth Error:", err.message);
+
+    
+      return res.status(err.status || 401).json({
+        success: false,
+        message: err.message || "Unauthorized",
+      });
+    }
   };
 };
+

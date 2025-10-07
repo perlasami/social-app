@@ -38,6 +38,7 @@ interface Iuserservices {
     confirmemail(req: Request, res: Response, next: NextFunction): Promise<Response>;
     resendOtp(req: Request, res: Response, next: NextFunction): Promise<Response>;
     login(req: Request, res: Response, next: NextFunction): Promise<Response>;
+    updateBasicInfo(req: Request, res: Response, next: NextFunction): Promise<Response>;
     //profileImage(req: Request, res: Response, next: NextFunction): Promise<Response>;
 }
 
@@ -154,36 +155,46 @@ export class Userservices implements Iuserservices {
 
      
 
-      login=async (req: Request, res: Response, next: NextFunction): Promise<Response>=> {
-        const{email,password}=req.body as loginDTO;
-        const user=await this.userModel.findByEmail({email});
-        if(!user || !await compareHash(password,user?.password)){
-            throw new invalidCredentials()
+//       login=async (req: Request, res: Response, next: NextFunction): Promise<Response>=> {
+//         const{email,password}=req.body as loginDTO;
+//         const user=await this.userModel.findByEmail({email});
+//          if (!user) {
+//   console.log("Login failed: no user found for", email);
+//   throw new invalidCredentials();
+// }
 
-        }
-        if(!user.confirm){
-                throw new notConfirmed()
+// const isMatch = await compareHash(password, user.password);
+// console.log("Password match result:", isMatch);
 
-            }
-            const jti=nanoid()
-        const accessToken:string=createJwt({
-            id:user._id
-        },process.env.user_access_signature as string,{
-            jwtid:jti,
-            expiresIn:"1 H"
-        });
-        const refreshToken:string=createJwt({
-            id:user._id
-        },process.env.user_refresh_signature as string,{
-            jwtid:jti,
-            expiresIn:"7 D"
-        });
-        return successHandler({res,data:{
-            accessToken,
-            refreshToken
-        }})
+// if (!isMatch) {
+//   console.log("Login failed: wrong password for", email);
+//   throw new invalidCredentials();
+// }
 
-    }
+
+//         if(!user.confirm){
+//                 throw new notConfirmed()
+
+//             }
+//             const jti=nanoid()
+//         const accessToken:string=createJwt({
+//             id:user._id
+//         },process.env.user_access_signature as string,{
+//             jwtid:jti,
+//             expiresIn:"1 H"
+//         });
+//         const refreshToken:string=createJwt({
+//             id:user._id
+//         },process.env.user_refresh_signature as string,{
+//             jwtid:jti,
+//             expiresIn:"7 D"
+//         });
+//         return successHandler({res,data:{
+//             accessToken,
+//             refreshToken
+//         }})
+
+//     }
 
     refreshToken = async (req: Request, res: Response) => {
   const authorization = req.headers.authorization;
@@ -297,6 +308,252 @@ coverImages = async (req: Request, res: Response) => {
   await user.save();
   successHandler({ res, data: paths });
 }
+
+
+
+
+enable2FA = async (req: AuthenticatedRequest, res: Response) => {
+  const user = res.locals.user as HydratedDocument<IUser>;
+
+  const otp = createOtp();
+  const html = template({ code: otp, name: user.firstName, subject: "Enable 2FA" });
+
+  user.twoFactorOtp = {
+    otp: await createHash(otp),
+    expireAt: new Date(Date.now() + 5 * 60 * 1000),
+  };
+  await user.save();
+
+  emailEmitter.publish("send-email-activation-code", { to: user.email, subject: "Enable 2FA", html });
+
+  return res.json({ success: true, message: "OTP sent to your email" });
+};
+
+verify2FA = async (req: AuthenticatedRequest, res: Response) => {
+  const { otp } = req.body;
+  const user = res.locals.user as HydratedDocument<IUser>;
+
+  if (!user.twoFactorOtp || user.twoFactorOtp.expireAt.getTime() <= Date.now()) {
+    return res.status(400).json({ success: false, message: "OTP expired or missing" });
+  }
+
+  const isValid = await compareHash(otp, user.twoFactorOtp.otp);
+  if (!isValid) return res.status(400).json({ success: false, message: "Invalid OTP" });
+
+  user.twoFactorEnabled = true;
+  user.twoFactorOtp = null;
+  await user.save();
+
+  return res.json({ success: true, message: "Two-factor authentication enabled" });
+};
+
+
+
+
+
+login = async (req: Request, res: Response, next: NextFunction): Promise<Response> => {
+  const { email, password } = req.body as loginDTO;
+  const user = await this.userModel.findByEmail({ email });
+
+  if (!user) {
+    throw new invalidCredentials();
+  }
+
+  console.log(" req.body.password =", password);
+  console.log(" user.password (hash) =", user.password);
+
+  const isMatch = await compareHash(password, user.password);
+  console.log(" bcrypt.compare result =", isMatch);
+
+  if (!isMatch) {
+    throw new invalidCredentials();
+  }
+
+  if (!user.confirm) {
+    throw new notConfirmed();
+  }
+
+ 
+  if (user.twoFactorEnabled) {
+    const otp = createOtp();
+    const html = template({ code: otp, name: user.firstName, subject: "Login Verification Code" });
+
+    emailEmitter.publish("send-email-activation-code", { to: user.email, subject: "Login Verification Code", html });
+
+    user.twoFactorOtp = {
+      otp: await createHash(otp),
+      expireAt: new Date(Date.now() + 5 * 60 * 1000),
+    };
+    await user.save();
+
+    return successHandler({ res });
+  }
+
+  
+  return this.generateTokens(user, res);
+};
+
+
+confirmLogin = async (req: Request, res: Response) => {
+  const { email, otp } = req.body;
+  const user = await this.userModel.findByEmail({ email });
+
+  if (!user || !user.twoFactorOtp) throw new invalidCredentials();
+
+
+  if (!user.twoFactorOtp.expireAt || user.twoFactorOtp.expireAt.getTime() <= Date.now()) {
+    throw new expiredOtpException();
+  }
+
+  if (!await compareHash(otp, user.twoFactorOtp.otp)) {
+    throw new invalidOTPException();
+  }
+
+  user.twoFactorOtp = null;
+  await user.save();
+
+  return this.generateTokens(user, res);
+};
+
+
+
+private generateTokens(user: HydratedDocument<IUser>, res: Response) {
+  const jti = nanoid();
+  const accessToken = createJwt({ id: user._id }, process.env.user_access_signature as string, {
+    jwtid: jti,
+    expiresIn: "1h",
+  });
+  const refreshToken = createJwt({ id: user._id }, process.env.user_refresh_signature as string, {
+    jwtid: jti,
+    expiresIn: "7d",
+  });
+  return successHandler({ res, data: { accessToken, refreshToken } });
+}
+
+updateBasicInfo = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    console.log("Entered updateBasicInfo function");
+
+    const { email, firstName, lastName, phone } = req.body;
+    console.log(" Request body received:", req.body);
+
+    if (!email) {
+      console.log(" No email provided");
+      return res.status(400).json({ message: "Email is required to update user info" });
+    }
+
+    console.log(` Looking for user with email: ${email}`);
+    const user = await this.userModel.findByEmail({ email });
+
+    if (!user) {
+      console.log(" User not found");
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    console.log(" User found:", user._id);
+
+    if (firstName) {
+      console.log(` Updating firstName: ${firstName}`);
+      user.firstName = firstName;
+    }
+    if (lastName) {
+      console.log(` Updating lastName: ${lastName}`);
+      user.lastName = lastName;
+    }
+    if (phone) {
+      console.log(` Updating phone: ${phone}`);
+      user.phone = phone;
+    }
+
+    user.slug = `${user.firstName}-${user.lastName}`.toLowerCase();
+    console.log(` New slug: ${user.slug}`);
+
+    const updatedUser = await user.save();
+    console.log(" User updated successfully:", updatedUser._id);
+
+    return res.status(200).json({
+      message: "User updated successfully",
+      data: updatedUser
+    });
+  } catch (err) {
+    console.error(" Update error:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+updateEmail = async (req: AuthenticatedRequest, res: Response) => {
+  const user = res.locals.user as HydratedDocument<IUser>;
+  const { newEmail } = req.body;
+
+  if (!newEmail) {
+    return res.status(400).json({ success: false, message: "New email required" });
+  }
+
+  user.email = newEmail;
+  user.confirm = false; 
+  await user.save();
+
+  
+  const otp = createOtp();
+  const html = template({ code: otp, name: user.firstName, subject: "Confirm Your New Email" });
+
+  user.twoFactorOtp = {
+    otp: await createHash(otp),
+    expireAt: new Date(Date.now() + 5 * 60 * 1000)
+  };
+  await user.save();
+
+  emailEmitter.publish("send-email-activation-code", {
+    to: newEmail,
+    subject: "Confirm Your New Email",
+    html
+  });
+
+  return res.json({ success: true, message: "Update email request sent, please confirm" });
+
+
+  
+};
+
+
+sendTaggedEmail = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = res.locals.user as HydratedDocument<IUser>;
+    const { subject, html, tags } = req.body;
+
+    if (!subject || !html || !tags || !Array.isArray(tags)) {
+      return res.status(400).json({
+        success: false,
+        message: "Subject, html and tags array are required",
+      });
+    }
+
+    
+    const personalizedHtml = html.replace(/{{\s*name\s*}}/gi, user.firstName);
+
+    
+    emailEmitter.publish("send-tagged-email", {
+      to: user.email,
+      subject,
+      html: personalizedHtml,
+      tags,
+    });
+
+    return res.json({
+      success: true,
+      message: `Tagged email sent to ${user.firstName} successfully`,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
+
 
 
 

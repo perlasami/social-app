@@ -8,6 +8,13 @@ export abstract class DBRepo<T> {
     const doc = await this.model.create(data)
     return doc
   }
+      find = async (
+        filter: FilterQuery<T> = {},
+        projection?: any,
+        options?: QueryOptions
+    ): Promise<HydratedDocument<T>[]> => {
+        return this.model.find(filter, projection, options).exec();
+    };
 
   findOne = async ({ filter, projection, options }: 
   { filter: FilterQuery<T>, projection?: ProjectionFields<T>, options?: QueryOptions }): Promise<FlattenMaps<HydratedDocument<T>> |HydratedDocument<T> | null> => {

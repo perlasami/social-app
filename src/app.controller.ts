@@ -7,6 +7,10 @@ import { ConnectDB } from "./DB/db.connection";
 import { promisify } from "util";
 import { pipeline } from "stream";
 import { createGetPresignedUrl, deleteFile, deleteFiles, getFile } from "./utils/multer/s3.services";
+import { UserEvents } from "./utils/Email/emailEvents";
+import { UserRepo } from "./DB/user.repo";
+import { userModel } from "./models/userModel";
+
 const createS3WriteStreamPipe=promisify(pipeline)
 
 dotenv.config({
@@ -96,6 +100,20 @@ app.get("/test", async (req: Request, res: Response) => {
             stack: err.stack
         });
     });
+
+
+const test = async () => {
+  try {
+    const userModel = new UserRepo();
+    const users = await userModel.find({ filter: { paraNoId: false } });
+    if (users) {
+      throw new Error("User found");
+    }
+    console.log({ users });
+  } catch (error) {
+    console.log({ error });
+  }
+};
 
     
     app.listen(port, () => {

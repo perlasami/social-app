@@ -24,7 +24,18 @@ export interface IUser {
   isCredentialsUpdated:Date;
   profileImage:string;
   coverImage:string[];
-  slug:string
+  slug:string;
+  extra:{
+    name:string;
+  },
+  deleteAt:Date,
+ 
+  twoFactorEnabled: boolean;
+  twoFactorOtp: {
+    otp: string;
+    expireAt: Date;
+  }| null;
+  
 }
 const userSchema = new Schema<IUser>(
   {
@@ -77,7 +88,20 @@ const userSchema = new Schema<IUser>(
     },
     coverImage:[{
       type:String
-    }]
+    }],
+    extra:{
+      name:string
+    },
+    deleteAt:Date,
+    twoFactorEnabled: {
+    type: Boolean,
+    default: false,
+  },
+  twoFactorOtp: {
+    otp: String,
+    expireAt: Date,
+  },
+
 
     
   },
@@ -89,6 +113,7 @@ const userSchema = new Schema<IUser>(
     toObject: {
       virtuals: true,
     },
+    strictQuery:true
   }
 );
 userSchema
@@ -103,6 +128,9 @@ userSchema
 
 userSchema.pre("validate", function (next) {
   console.log("Pre Hook", this);
+  if (!this.slug) {
+    this.slug = `${this.firstName}-${this.lastName}`.toLowerCase();
+  }
   if (!this.slug?.includes("-")) {
     throw new ApplicationException(
       "Slug is Required and must hold - like ex: first-name-last-name",409
@@ -111,12 +139,13 @@ userSchema.pre("validate", function (next) {
   next();
 });
 
-userSchema.pre("save", async function (this: HUserDocument & { wasNew: boolean }, next) {
-  this.wasNew = this.isNew;
-  console.log(this.wasNew);
-  if (this.isModified("password")) {
-    this.password = await createHash(this.password);
-  }
+userSchema.pre('save', function (next) {
+  console.log({
+    // preSave: this,
+    directModified: this.directModifiedPaths(),
+    isDirectModified: this.isDirectModified('extra'),
+    isSelected: this.isSelected('extra.name')
+  });
   next();
 });
 
@@ -129,6 +158,16 @@ userSchema.post("save", function (doc, next) {
       html: `<p>Your OTP is: 123465</p>` 
     });
   }
+  next();
+});
+
+
+userSchema.pre(['findOne', 'find'], function (next) {
+  const query = this.getQuery();
+  if (query.paraNoId === false) {
+    this.setQuery({ ...query, deleteAt: { $exists: false } });
+  }
+  console.log('hook worked in findOne', this.getQuery());
   next();
 });
 
