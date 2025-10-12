@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { Userservices } from './user.services';
-import { validation } from '../middleware/validation.middleware';
+import { validation } from '../../middleware/validation.middleware';
 import { SignupSchema, confirmemailSchema, resendOtp, loginSchema, forgetPasswordSchema, confirmLoginSchema } from './user.validation';
-import { auth } from '../middleware/auth.middleware';
-import { uploadFiles } from '../utils/multer/multer';
-import { uploadMultipleFile } from '../utils/multer/s3.services';
-import { userModel } from '../models/userModel';
+import { auth } from '../../middleware/auth.middleware';
+import { uploadFiles } from '../../utils/multer/multer';
+import { uploadMultipleFile } from '../../utils/multer/s3.services';
+import { userModel } from '../../models/userModel';
 import bcrypt from 'bcrypt';
-import { IUser } from '../models/userModel';
+import { IUser } from '../../models/userModel';
 import { HydratedDocument } from 'mongoose';
 declare module "express-serve-static-core" {
   interface Request {

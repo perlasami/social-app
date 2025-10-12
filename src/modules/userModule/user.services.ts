@@ -1,21 +1,21 @@
 import { NextFunction, Request, Response } from "express";
-import { ApplicationException, expiredOtpException, invalidCredentials, invalidOTPException, notConfirmed, NotFoundException, Notvalid_email, ValidationError } from "../utils/error";
+import { ApplicationException, expiredOtpException, invalidCredentials, invalidOTPException, notConfirmed, NotFoundException, Notvalid_email, ValidationError } from "../../utils/error";
 import { SignupSchema, LoginSchema, confirmemailSchema, resendOtp, forgetPasswordSchema } from "./user.validation";
-import { DBRepo } from "../DB/DBRepo";
-import { IUser, userModel } from "../models/userModel";
+import { DBRepo } from "../../DB/DBRepo";
+import { IUser, userModel } from "../../models/userModel";
 import { HydratedDocument } from "mongoose";
-import { UserRepo } from "../DB/user.repo";
-import { compareHash, createHash } from "../utils/hash";
-import { createOtp } from "../utils/Email/createOTP";
+import { UserRepo } from "../../DB/user.repo";
+import { compareHash, createHash } from "../../utils/hash";
+import { createOtp } from "../../utils/Email/createOTP";
 import z, { file, hash, success } from "zod";
-import { template } from "../utils/Email/generateHtml";
-import { emailEmitter } from "../utils/Email/emailEvents";
-import { successHandler } from "../utils/successHandler";
-import { createJwt } from "../utils/jwt";
+import { template } from "../../utils/Email/generateHtml";
+import { emailEmitter } from "../../utils/Email/emailEvents";
+import { successHandler } from "../../utils/successHandler";
+import { createJwt } from "../../utils/jwt";
 import { nanoid } from "nanoid";
-import { decodeToken } from "../middleware/auth.middleware";
-import { tokenTypeEnum } from "../middleware/auth.middleware";
-import { createPresignedUrl, uploadFile, uploadMultipleFile } from "../utils/multer/s3.services";
+import { decodeToken } from "../../middleware/auth.middleware";
+import { tokenTypeEnum } from "../../middleware/auth.middleware";
+import { createPresignedUrl, uploadFile, uploadMultipleFile } from "../../utils/multer/s3.services";
 
 
 export type confirmemailDTO=z.infer<typeof confirmemailSchema>

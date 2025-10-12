@@ -8,6 +8,8 @@ export const validation = (schema: ZodTypeAny) => {
       ...req.body,
       ...req.params,
       ...req.query,
+      files:req.files,
+      ...req.file
     };
 
     const result = schema.safeParse(data);

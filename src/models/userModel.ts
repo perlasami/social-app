@@ -1,5 +1,5 @@
 
-import { Schema, model,HydratedDocument } from "mongoose";
+import { Schema, model,HydratedDocument, Types } from "mongoose";
 import { boolean, maxLength, minLength, string } from "zod";
 import { fa } from "zod/v4/locales";
 import { ApplicationException } from "../utils/error";
@@ -35,6 +35,9 @@ export interface IUser {
     otp: string;
     expireAt: Date;
   }| null;
+  freinds:[
+    Types.ObjectId
+  ]
   
 }
 const userSchema = new Schema<IUser>(
@@ -93,6 +96,10 @@ const userSchema = new Schema<IUser>(
       name:string
     },
     deleteAt:Date,
+    freinds:[{
+      type:Types.ObjectId,
+      ref:"user"
+    }],
     twoFactorEnabled: {
     type: Boolean,
     default: false,
